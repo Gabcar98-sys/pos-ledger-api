@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A second push to the same branch cancels the first: nobody needs the results of a
+# commit that has already been replaced.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - run: dotnet restore
+
+      - run: dotnet build --no-restore --configuration Release
+
+      # The integration tests start a real Postgres through Testcontainers, using the
+      # Docker daemon that is already running on the hosted runner. No service container
+      # is declared here on purpose: the tests own their database's lifetime, so they
+      # behave identically here and on a laptop.
+      - name: Test
+        run: >
+          dotnet test --no-build --configuration Release
+          --logger "trx;LogFileName=results.trx"
+          --collect:"XPlat Code Coverage"
+          --results-directory ./artifacts/test
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          reportgenerator \
+            -reports:'./artifacts/test/**/coverage.cobertura.xml' \
+            -targetdir:./artifacts/coverage \
+            -reporttypes:'MarkdownSummaryGithub;Html'
+          cat ./artifacts/coverage/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test and coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./artifacts
+          retention-days: 7
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+
+      - run: dotnet build --configuration Release
+
+      - uses: github/codeql-action/analyze@v3
+
+  image:
+    name: Build and publish image
+    runs-on: ubuntu-latest
+    needs: test
+    # Only main gets an image. A pull request gets the build verified without
+    # publishing anything a reviewer could mistake for a release.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the published image
+        run: |
+          # No database is provided: /health is liveness and must answer without one.
+          # A real Jwt:Secret is required because the app refuses to start in Production
+          # with the development value — which is the point of that guard.
+          docker run -d --name smoke -p 8080:8080 \
+            -e ConnectionStrings__Postgres='Host=nowhere;Database=x;Username=x;Password=x' \
+            -e Jwt__Secret='ci-smoke-test-secret-at-least-32-characters-long' \
+            ghcr.io/${{ github.repository }}:latest
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/health; then echo " ok"; exit 0; fi
+            sleep 2
+          done
+          echo "image did not become healthy"; docker logs smoke; exit 1

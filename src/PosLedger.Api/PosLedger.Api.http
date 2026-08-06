@@ -1,6 +1,121 @@
-@PosLedger.Api_HostAddress = http://localhost:5238
+### POS Ledger API — a walk through the whole thing.
+### Run `docker compose up` first. In VS Code use the REST Client extension; in Rider and
+### Visual Studio this file runs natively. The Swagger UI at http://localhost:8080 does the same.
 
-GET {{PosLedger.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+@host = http://localhost:8080
 
-###
+### 1. Liveness — must answer without a database.
+GET {{host}}/health
+
+### 2. Readiness — this one does need the database.
+GET {{host}}/ready
+
+### 3. Sign in as the admin. Copy accessToken into @adminToken below.
+POST {{host}}/api/v1/auth/token
+Content-Type: application/json
+
+{ "username": "admin", "password": "admin-demo-2026" }
+
+### 4. And as the cashier, who may sell but not touch the catalogue.
+POST {{host}}/api/v1/auth/token
+Content-Type: application/json
+
+{ "username": "cashier", "password": "cashier-demo-2026" }
+
+@adminToken = paste-the-admin-token-here
+@cashierToken = paste-the-cashier-token-here
+
+### 5. The catalogue is readable without a token.
+GET {{host}}/api/v1/products?limit=3
+
+### 6. Page through it with the cursor from the previous response.
+GET {{host}}/api/v1/products?limit=3&after=FLT-100
+
+### 7. Search matches name and sku, case-insensitively.
+GET {{host}}/api/v1/products?q=coffee
+
+### 8. Creating a product needs the admin role. Without a token this is 401.
+POST {{host}}/api/v1/products
+Content-Type: application/json
+
+{ "sku": "SCARCE-1", "name": "Last few units", "unitPrice": 5000.00, "initialStock": 3 }
+
+### 9. With the cashier's token it is 403 — authenticated, but not allowed.
+POST {{host}}/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{cashierToken}}
+
+{ "sku": "NOPE-1", "name": "Should not appear", "unitPrice": 100.00, "initialStock": 1 }
+
+### 10. With the admin's token it is created, and the initial stock lands in the ledger.
+POST {{host}}/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{ "sku": "SCARCE-1", "name": "Last few units", "unitPrice": 5000.00, "initialStock": 3 }
+
+### 11. The same SKU again is a 409 — the unique constraint decides, not a prior SELECT.
+POST {{host}}/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{ "sku": "SCARCE-1", "name": "Duplicate", "unitPrice": 5000.00, "initialStock": 1 }
+
+### 12. Sell two of them. Replace productId with the id from step 10.
+POST {{host}}/api/v1/sales
+Content-Type: application/json
+Authorization: Bearer {{cashierToken}}
+Idempotency-Key: 7f1c4a4e-0000-4000-8000-000000000001
+
+{ "lines": [ { "productId": "REPLACE-WITH-PRODUCT-ID", "quantity": 2 } ] }
+
+### 13. Send step 12 again, unchanged. Same sale, same number, stock unchanged —
+### and an Idempotent-Replay: true header on the response.
+POST {{host}}/api/v1/sales
+Content-Type: application/json
+Authorization: Bearer {{cashierToken}}
+Idempotency-Key: 7f1c4a4e-0000-4000-8000-000000000001
+
+{ "lines": [ { "productId": "REPLACE-WITH-PRODUCT-ID", "quantity": 2 } ] }
+
+### 14. Same key, different basket: 422. That is a client bug and hiding it helps nobody.
+POST {{host}}/api/v1/sales
+Content-Type: application/json
+Authorization: Bearer {{cashierToken}}
+Idempotency-Key: 7f1c4a4e-0000-4000-8000-000000000001
+
+{ "lines": [ { "productId": "REPLACE-WITH-PRODUCT-ID", "quantity": 9 } ] }
+
+### 15. Ask for more than there is: 409, and the response names the shortfall.
+POST {{host}}/api/v1/sales
+Content-Type: application/json
+Authorization: Bearer {{cashierToken}}
+Idempotency-Key: 7f1c4a4e-0000-4000-8000-000000000002
+
+{ "lines": [ { "productId": "REPLACE-WITH-PRODUCT-ID", "quantity": 999 } ] }
+
+### 16. Import a stock file. Two rows are fine, three are not, and the report says why.
+POST {{host}}/api/v1/imports
+Authorization: Bearer {{adminToken}}
+Content-Type: multipart/form-data; boundary=----boundary
+
+------boundary
+Content-Disposition: form-data; name="file"; filename="stock.csv"
+Content-Type: text/csv
+
+sku,quantity,reason,note
+CAF-500,25,Import,march restock
+MUG-STD,-2,Adjustment,breakage
+GHOST-1,5,Import,no such product
+CAF-500,3,Import,duplicate row
+MUG-STD,abc,Import,not a number
+------boundary--
+
+### 17. Reconcile: every product that moved, and any whose stock disagrees with its ledger.
+### Drift must be 0 everywhere. If it is not, something wrote stock without a movement.
+GET {{host}}/api/v1/reconciliation
+Authorization: Bearer {{adminToken}}
+
+### 18. Recent sales.
+GET {{host}}/api/v1/sales?limit=10
+Authorization: Bearer {{cashierToken}}

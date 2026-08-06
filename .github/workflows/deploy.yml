@@ -1,0 +1,55 @@
+name: Deploy
+
+# Deploys are cut from a tag, not from every green build on main. A demo that
+# redeploys on every commit is offline every time a commit is wrong.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Render
+    runs-on: ubuntu-latest
+    environment:
+      name: demo
+      url: ${{ vars.DEMO_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK is not set. Add it in Settings > Secrets."
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Deploy requested."
+
+      - name: Wait for the new version to answer
+        env:
+          URL: ${{ vars.DEMO_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "DEMO_URL variable not set; skipping the health check."
+            exit 0
+          fi
+          # The free tier builds and then cold-starts, so this is generous on purpose.
+          for i in $(seq 1 60); do
+            if curl -fsS "$URL/health" > /dev/null; then
+              echo "$URL/health answered after $((i * 10))s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "The deployed service never became healthy."
+          exit 1

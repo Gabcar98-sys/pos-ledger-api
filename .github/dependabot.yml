@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the whole framework rather than eight that have to land together.
+      aspnetcore:
+        patterns: ['Microsoft.AspNetCore.*', 'Microsoft.Extensions.*']
+      efcore:
+        patterns: ['Microsoft.EntityFrameworkCore.*', 'Npgsql.EntityFrameworkCore.*', 'EFCore.*']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

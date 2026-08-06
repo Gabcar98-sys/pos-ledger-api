@@ -1,0 +1,31 @@
+# Render blueprint for the hosted demo. Checked in so the deployment is reviewable
+# rather than a set of fields somebody typed into a dashboard once.
+#
+# The database is NOT declared here: Render's free Postgres expires after 30 days, so the
+# demo points at a Neon free database instead and DATABASE_URL is set as a secret.
+
+services:
+  - type: web
+    name: pos-ledger-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: false          # deploys are cut from tags by .github/workflows/deploy.yml
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+
+      # One instance and no release pipeline step, so the app migrates itself on boot.
+      # See docs/adr/0005-migrations-on-startup.md for why this is not the default.
+      - key: Database__MigrateOnStartup
+        value: "true"
+      - key: Database__SeedOnStartup
+        value: "true"
+
+      # Set in the Render dashboard, never in this file.
+      - key: DATABASE_URL
+        sync: false
+      - key: Jwt__Secret
+        sync: false
