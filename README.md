@@ -83,7 +83,7 @@ flowchart LR
         recon["Reconciliation<br/>ledger vs. cache"]
     end
 
-    subgraph pg[("PostgreSQL 16")]
+    subgraph pg["PostgreSQL 16"]
         movements[["stock_movements<br/><b>append-only · the truth</b>"]]
         prod[["products<br/>stock_on_hand = cached sum"]]
         salet[["sales · sale_lines<br/>price copied at sale time"]]
