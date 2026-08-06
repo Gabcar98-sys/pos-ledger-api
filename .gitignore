@@ -482,3 +482,26 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Terraform
+# The provider plugins are hundreds of MB and are re-fetched by `terraform init`.
+# .terraform.lock.hcl is committed on purpose: it pins provider versions and checksums,
+# which is the whole point of having a lock file.
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+# Variable files can carry account ids, ARNs and passwords. The example file is tracked.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# Scanner and plan output produced by CI
+checkov.sarif
+plan.txt
