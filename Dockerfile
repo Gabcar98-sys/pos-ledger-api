@@ -18,6 +18,12 @@ RUN dotnet publish src/PosLedger.Api/PosLedger.Api.csproj \
 # ── runtime ────────────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS final
 
+# Alpine ships without ICU, and .NET refuses to start with globalization enabled and no
+# ICU present. Running in invariant mode instead would be the smaller image and the wrong
+# trade: this API formats currency and parses dates for a Colombian client, and invariant
+# mode silently changes both. ~30MB is the correct price for that.
+RUN apk add --no-cache icu-libs tzdata
+
 # Runs as an unprivileged user. A container that runs as root is one container
 # escape away from being a host compromise, and there is no reason for it here.
 RUN addgroup -S posledger && adduser -S -G posledger -H posledger
