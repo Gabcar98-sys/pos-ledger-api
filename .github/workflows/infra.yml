@@ -1,0 +1,91 @@
+name: Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths: ['infra/**', '.github/workflows/infra.yml']
+  pull_request:
+    paths: ['infra/**', '.github/workflows/infra.yml']
+
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  terraform:
+    name: Validate and plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.8'
+
+      - run: terraform fmt -check -recursive -diff
+
+      - run: terraform init -backend=false -input=false
+
+      - run: terraform validate
+
+      # The plan runs with no AWS credentials at all. The configuration uses no data
+      # sources that read live AWS state, so the whole graph renders offline — which is
+      # what makes this check runnable on every pull request.
+      - name: Plan
+        env:
+          AWS_ACCESS_KEY_ID: offline
+          AWS_SECRET_ACCESS_KEY: offline
+          AWS_REGION: us-east-1
+        run: |
+          terraform plan -input=false -lock=false -no-color -var offline_plan=true \
+            | tee plan.txt
+          {
+            echo '### Terraform plan'
+            echo '```'
+            grep -E '^Plan:|^No changes' plan.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  tflint:
+    name: tflint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+      - run: tflint --init
+      - run: tflint --recursive --minimum-failure-severity=warning
+
+  checkov:
+    name: checkov
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every skip in infra/ carries its reason inline, next to the resource it applies
+      # to. A blanket skip list in a config file is how a security scanner becomes decoration.
+      - uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infra
+          framework: terraform
+          quiet: true
+          soft_fail: false
+          output_format: cli,sarif
+          output_file_path: console,checkov.sarif
+
+      - if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: infra/checkov.sarif
+          category: checkov
