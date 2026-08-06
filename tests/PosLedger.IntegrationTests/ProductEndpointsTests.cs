@@ -13,11 +13,45 @@ namespace PosLedger.IntegrationTests;
 [Collection(ApiCollection.Name)]
 public sealed class ProductEndpointsTests(PosLedgerApiFactory factory) : IAsyncLifetime
 {
-    private readonly HttpClient _client = factory.CreateClient();
+    private HttpClient _client = default!;
 
-    public Task InitializeAsync() => factory.ResetDatabaseAsync();
+    public async Task InitializeAsync()
+    {
+        await factory.ResetDatabaseAsync();
+        _client = await factory.CreateAdminClientAsync();
+    }
 
     public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task Writing_to_the_catalogue_without_a_token_is_rejected()
+    {
+        var anonymous = factory.CreateClient();
+
+        var response = await anonymous.PostAsJsonAsync("/api/v1/products",
+            new CreateProductRequest("NEW-1", "Something", 100m, 1));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task A_cashier_cannot_change_the_catalogue()
+    {
+        var cashier = await factory.CreateCashierClientAsync();
+
+        var response = await cashier.PostAsJsonAsync("/api/v1/products",
+            new CreateProductRequest("NEW-1", "Something", 100m, 1));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Reading_the_catalogue_needs_no_token()
+    {
+        var anonymous = factory.CreateClient();
+
+        (await anonymous.GetAsync("/api/v1/products")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
 
     [Fact]
     public async Task Creating_a_product_with_initial_stock_writes_an_opening_ledger_entry()
