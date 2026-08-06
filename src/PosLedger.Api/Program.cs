@@ -6,7 +6,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using PosLedger.Api.Common;
 using PosLedger.Api.Features.Auth;
+using PosLedger.Api.Features.Imports;
 using PosLedger.Api.Features.Products;
+using PosLedger.Api.Features.Reconciliation;
 using PosLedger.Api.Features.Sales;
 using PosLedger.Api.Persistence;
 using Serilog;
@@ -168,6 +170,8 @@ app.MapGet("/ready", async (PosLedgerDbContext db, CancellationToken ct) =>
 app.MapAuth();
 app.MapProducts();
 app.MapSales();
+app.MapImports();
+app.MapReconciliation();
 
 await DatabaseInitializer.InitializeAsync(app.Services, app.Configuration);
 

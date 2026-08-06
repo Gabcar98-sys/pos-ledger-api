@@ -10,6 +10,8 @@ public sealed class PosLedgerDbContext(DbContextOptions<PosLedgerDbContext> opti
     public DbSet<Sale> Sales => Set<Sale>();
     public DbSet<SaleLine> SaleLines => Set<SaleLine>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+    public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
+    public DbSet<ImportError> ImportErrors => Set<ImportError>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

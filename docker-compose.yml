@@ -11,7 +11,10 @@ services:
       POSTGRES_PASSWORD: posledger
     ports:
       # Exposed so you can point psql or a GUI at it while the stack runs.
-      - "5432:5432"
+      # Override when the host already runs Postgres on 5432 — otherwise the connection
+      # silently reaches that one instead, and the errors make no sense:
+      #   POSTGRES_PORT=55432 docker compose up
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
