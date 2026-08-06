@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using PosLedger.Api.Common;
 using PosLedger.Api.Domain;
+using PosLedger.Api.Features.Auth;
 using PosLedger.Api.Persistence;
 
 namespace PosLedger.Api.Features.Products;
@@ -16,9 +17,13 @@ public static class ProductEndpoints
         var group = app.MapGroup("/api/v1/products")
             .WithTags("Products");
 
+        // Reading the catalogue is open — a price list is not a secret, and it keeps the demo
+        // usable without a token. Changing it is not.
         group.MapPost("/", Create)
+            .RequireAuthorization(Roles.Admin)
             .Validate<CreateProductRequest>()
             .Produces<ProductResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .WithSummary("Create a product")
             .WithDescription("Initial stock, if any, is written to the ledger as an Adjustment movement.");
@@ -33,6 +38,7 @@ public static class ProductEndpoints
             .WithSummary("Get a product by id");
 
         group.MapPut("/{id:guid}", Update)
+            .RequireAuthorization(Roles.Admin)
             .Validate<UpdateProductRequest>()
             .Produces<ProductResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound)

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PosLedger.Api.Persistence;
@@ -11,9 +12,11 @@ using PosLedger.Api.Persistence;
 namespace PosLedger.Api.Persistence.Migrations
 {
     [DbContext(typeof(PosLedgerDbContext))]
-    partial class PosLedgerDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260806180452_SalesAndIdempotency")]
+    partial class SalesAndIdempotency
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

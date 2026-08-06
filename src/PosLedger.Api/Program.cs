@@ -1,8 +1,13 @@
+using System.Text;
 using System.Text.Json.Serialization;
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using PosLedger.Api.Common;
+using PosLedger.Api.Features.Auth;
 using PosLedger.Api.Features.Products;
+using PosLedger.Api.Features.Sales;
 using PosLedger.Api.Persistence;
 using Serilog;
 
@@ -40,6 +45,44 @@ builder.Services.AddDbContext<PosLedgerDbContext>(options =>
         // reporting tool the client already owns. Quoted "StockOnHand" columns are a daily tax.
         .UseSnakeCaseNamingConvention());
 
+// ── Authentication ─────────────────────────────────────────────────────────────
+builder.Services.AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .Validate(jwt => jwt.Secret.Length >= 32, "Jwt:Secret must be at least 32 characters.")
+    .Validate(
+        jwt => builder.Environment.IsDevelopment()
+               || builder.Environment.EnvironmentName == "Testing"
+               || jwt.Secret != JwtOptions.DevelopmentSecret,
+        "Jwt:Secret is still the development value. Set a real secret before deploying.")
+    // Fails at boot rather than on the first login attempt. A misconfigured deployment
+    // that starts and then rejects everyone is harder to diagnose than one that never starts.
+    .ValidateOnStart();
+
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
+
+var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtSection.Issuer,
+            ValidAudience = jwtSection.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection.Secret)),
+            // Default is five minutes of slack on expiry, which is five minutes longer than
+            // a revoked token should be usable.
+            ClockSkew = TimeSpan.FromSeconds(30)
+        };
+    });
+
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(Roles.Admin, policy => policy.RequireRole(Roles.Admin));
+
 // ── Web ────────────────────────────────────────────────────────────────────────
 builder.Services.AddValidatorsFromAssemblyContaining<CreateProductValidator>();
 
@@ -70,6 +113,26 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Inventory and invoicing ledger for a point of sale. "
                       + "Stock only ever moves through an append-only ledger."
     });
+
+    // Lets the Swagger UI hold a token, so the whole API can be exercised from the browser
+    // without reaching for curl.
+    var scheme = new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Paste the accessToken returned by POST /api/v1/auth/token.",
+        Reference = new Microsoft.OpenApi.Models.OpenApiReference
+        {
+            Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+            Id = JwtBearerDefaults.AuthenticationScheme
+        }
+    };
+
+    options.AddSecurityDefinition(JwtBearerDefaults.AuthenticationScheme, scheme);
+    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement { [scheme] = [] });
 });
 
 var app = builder.Build();
@@ -79,6 +142,8 @@ app.UseExceptionHandler();      // unhandled exceptions come out as ProblemDetai
 app.UseStatusCodePages();
 app.UseCorrelationId();
 app.UseSerilogRequestLogging();
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Swagger is on in every environment on purpose: this API is meant to be opened and
 // poked at by someone who has just found the repository.
@@ -100,7 +165,9 @@ app.MapGet("/ready", async (PosLedgerDbContext db, CancellationToken ct) =>
     .WithTags("Diagnostics")
     .WithSummary("Readiness probe");
 
+app.MapAuth();
 app.MapProducts();
+app.MapSales();
 
 await DatabaseInitializer.InitializeAsync(app.Services, app.Configuration);
 
