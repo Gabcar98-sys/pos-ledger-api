@@ -35,6 +35,11 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       DATABASE_URL: postgres://posledger:posledger@db:5432/posledger
+      # Required, not optional: outside Development the app refuses to boot with the
+      # secret shipped in appsettings.json, which is the guard working as intended.
+      # This value is local-only and public by design — the stack it signs for is
+      # a throwaway container with a seeded catalogue in it. See ADR-0006.
+      Jwt__Secret: "local-compose-only-secret-at-least-32-characters"
       # One instance, no release pipeline: migrating and seeding at startup is the
       # right call here and the wrong one in a real deployment. See ADR-0005.
       Database__MigrateOnStartup: "true"
