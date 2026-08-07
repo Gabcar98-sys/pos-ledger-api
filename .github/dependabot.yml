@@ -31,6 +31,8 @@ updates:
     # not a dependency update, it is a framework migration: it has to move the TFM, the
     # setup-dotnet version in CI and these two images in one commit, or the build breaks.
     # Dependabot opened exactly that PR on day one; this is why it will not again.
+    # Named 'dotnet/*', not 'mcr.microsoft.com/dotnet/*': dependabot strips the registry
+    # host, so the fully qualified form matches nothing and the rule silently does nothing.
     ignore:
-      - dependency-name: 'mcr.microsoft.com/dotnet/*'
+      - dependency-name: 'dotnet/*'
         update-types: ['version-update:semver-major']

@@ -93,21 +93,28 @@ jobs:
       - uses: github/codeql-action/analyze@v3
 
   image:
-    name: Build and publish image
+    name: Build image (published from main)
     runs-on: ubuntu-latest
     needs: test
-    # Only main gets an image. A pull request gets the build verified without
-    # publishing anything a reviewer could mistake for a release.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
+    env:
+      # main publishes; a pull request builds and smoke tests the image without
+      # publishing anything a reviewer could mistake for a release.
+      #
+      # The job used to be skipped entirely on pull requests, which meant a PR touching
+      # the Dockerfile was verified by nothing — dependabot proposed bumping the base
+      # image two major versions past the target framework and every check went green.
+      PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      # Only main authenticates, because only main publishes.
+      - if: env.PUBLISH == 'true'
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -124,13 +131,16 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ env.PUBLISH == 'true' }}
+          # Never both at once: on main the smoke test pulls what was just pushed, on a
+          # pull request it runs the image straight out of the local daemon.
+          load: ${{ env.PUBLISH != 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke test the published image
+      - name: Smoke test the image
         env:
           # Taken from the metadata action rather than rebuilt from github.repository:
           # that context keeps the owner's capitalisation (Gabcar98-sys), and a registry
