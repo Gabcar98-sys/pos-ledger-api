@@ -11,6 +11,21 @@ updates:
         patterns: ['Microsoft.AspNetCore.*', 'Microsoft.Extensions.*']
       efcore:
         patterns: ['Microsoft.EntityFrameworkCore.*', 'Npgsql.EntityFrameworkCore.*', 'EFCore.*']
+    ignore:
+      # The EF Core tool has to match the EF Core runtime it generates migrations for, and
+      # a 10.x tool needs the .NET 10 runtime just to start. Nothing in CI runs `dotnet ef`,
+      # so this bump passes every check while breaking migrations for anyone with only the
+      # .NET 8 SDK installed — a green tick over a broken workflow.
+      - dependency-name: 'dotnet-ef'
+        update-types: ['version-update:semver-major']
+
+      # FluentAssertions 8 left Apache 2.0 for the Xceed Community License: free for
+      # non-commercial use, USD 130 per developer per year otherwise. Version 7 stays free
+      # indefinitely. Moving off 6.x is a licensing decision for a human to make, not a
+      # version bump — and shipping a public repository whose test suite quietly obliges a
+      # reader's employer to buy a licence is not a favour to anyone.
+      - dependency-name: 'FluentAssertions'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
