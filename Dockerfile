@@ -16,7 +16,7 @@ RUN dotnet publish src/PosLedger.Api/PosLedger.Api.csproj \
     /p:UseAppHost=false
 
 # ── runtime ────────────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS final
 
 # Alpine ships without ICU, and .NET refuses to start with globalization enabled and no
 # ICU present. Running in invariant mode instead would be the smaller image and the wrong
