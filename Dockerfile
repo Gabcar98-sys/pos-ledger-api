@@ -3,7 +3,7 @@
 # ── build ──────────────────────────────────────────────────────────────────────
 # The csproj is copied on its own first so that `restore` is cached and only re-runs
 # when a dependency actually changes, not on every source edit.
-FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
 WORKDIR /src
 
 COPY src/PosLedger.Api/PosLedger.Api.csproj src/PosLedger.Api/
