@@ -6,6 +6,10 @@ on:
     paths: ['infra/**', '.github/workflows/infra.yml']
   pull_request:
     paths: ['infra/**', '.github/workflows/infra.yml']
+  # The path filter means this workflow can sit unrun for weeks — and it did not run at
+  # all on the first push, so the badge had no status to show. This makes it runnable
+  # on demand without pretending an infra change happened.
+  workflow_dispatch:
 
 concurrency:
   group: infra-${{ github.ref }}

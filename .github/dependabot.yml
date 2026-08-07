@@ -16,8 +16,21 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      # One PR a week for the whole pipeline. Five separate PRs, each re-running the
+      # full test suite against a real Postgres, is a lot of CI minutes spent to review
+      # five one-line diffs that always land together anyway.
+      actions:
+        patterns: ['*']
 
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    # The base images are pinned to the framework the project targets. A major bump is
+    # not a dependency update, it is a framework migration: it has to move the TFM, the
+    # setup-dotnet version in CI and these two images in one commit, or the build breaks.
+    # Dependabot opened exactly that PR on day one; this is why it will not again.
+    ignore:
+      - dependency-name: 'mcr.microsoft.com/dotnet/*'
+        update-types: ['version-update:semver-major']
