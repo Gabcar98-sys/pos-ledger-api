@@ -131,6 +131,12 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Smoke test the published image
+        env:
+          # Taken from the metadata action rather than rebuilt from github.repository:
+          # that context keeps the owner's capitalisation (Gabcar98-sys), and a registry
+          # reference has to be lowercase. The push works because the action normalises
+          # it; a hand-written `docker run` does not, and fails with "must be lowercase".
+          IMAGE: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
         run: |
           # No database is provided: /health is liveness and must answer without one.
           # A real Jwt:Secret is required because the app refuses to start in Production
@@ -138,7 +144,7 @@ jobs:
           docker run -d --name smoke -p 8080:8080 \
             -e ConnectionStrings__Postgres='Host=nowhere;Database=x;Username=x;Password=x' \
             -e Jwt__Secret='ci-smoke-test-secret-at-least-32-characters-long' \
-            ghcr.io/${{ github.repository }}:latest
+            "$IMAGE"
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:8080/health; then echo " ok"; exit 0; fi
             sleep 2
