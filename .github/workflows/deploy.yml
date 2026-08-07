@@ -22,7 +22,7 @@ jobs:
       name: demo
       url: ${{ vars.DEMO_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Trigger deploy
         env:
