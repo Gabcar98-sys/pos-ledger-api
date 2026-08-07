@@ -27,6 +27,18 @@ updates:
       - dependency-name: 'FluentAssertions'
         update-types: ['version-update:semver-major']
 
+      # The efcore group only covers src/PosLedger.Api, so a major lands EF Core 9.0.18 in
+      # the API (pulled by Design) and 9.0.1 in the test project (the floor Npgsql asks for),
+      # and the build dies on CS1705. Moving to EF Core 9 means the three packages, the
+      # dotnet-ef tool and a re-scaffold of the migrations in one commit. That is a migration
+      # with a person behind it, and until someone does it this PR can only ever be red.
+      - dependency-name: 'Microsoft.EntityFrameworkCore.*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Npgsql.EntityFrameworkCore.*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'EFCore.NamingConventions'
+        update-types: ['version-update:semver-major']
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
