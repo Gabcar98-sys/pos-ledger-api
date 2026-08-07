@@ -503,5 +503,5 @@ override.tf.json
 .terraformrc
 terraform.rc
 # Scanner and plan output produced by CI
-checkov.sarif
+results.sarif
 plan.txt
